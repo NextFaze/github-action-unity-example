@@ -1,0 +1,47 @@
+name: Release on Main 😎
+
+on: 
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build project ✨
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          lfs: true
+
+      # Cache
+      - uses: actions/cache@v2
+        with:
+          path: Library
+          key: Library
+
+      # Build
+      - name: Build project
+        uses: game-ci/unity-builder@v2
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        with:
+          targetPlatform: WebGL
+
+      # Output
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: Build
+          path: build
+      
+      #Upload to Pages
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@4.1.1
+        with:
+          branch: gh-pages # The branch the action should deploy to.
+          folder: build # The folder the action should deploy.
+
