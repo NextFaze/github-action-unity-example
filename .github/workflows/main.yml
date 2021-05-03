@@ -6,10 +6,24 @@ on:
     branches:
       - main
 
-jobs:
-  build:
+jobs:    
+  build-project:
     name: Build project ✨
     runs-on: ubuntu-latest
+
+    # Enter in project properties here
+    env:
+      PROJECT_NAME: github-karts
+
+    strategy:
+      fail-fast: false
+      matrix:
+        targetPlatform:         # These are the definitions from: https://docs.unity3d.com/ScriptReference/BuildTarget.html
+          - StandaloneOSX       # Build a macOS standalone (Intel 64-bit).
+          - StandaloneWindows64 # Build a Windows 64-bit standalone.
+          - StandaloneLinux64   # Build a Linux 64-bit standalone
+          - WebGL               # Build for WebGL
+
     steps:
       # Checkout
       - name: Checkout repository
@@ -21,7 +35,7 @@ jobs:
       - uses: actions/cache@v2
         with:
           path: Library
-          key: Library
+          key: Library-${{ matrix.targetPlatform }}
 
       # Build
       - name: Build project
@@ -33,19 +47,50 @@ jobs:
           # UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
           # UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
         with:
-          targetPlatform: WebGL
+          targetPlatform:  ${{ matrix.targetPlatform }}
+          buildName: ${{ env.PROJECT_NAME }}
 
-      # Output
+      # We manually compress the MacOS build, as uploading as an Artifact causes issues on MacOS
+      - name: Compress Build (MacOS)
+        if: matrix.targetPlatform == 'StandaloneOSX'
+        run: |
+          pushd build/${{ matrix.targetPlatform }}
+          sudo zip -r ${{ env.PROJECT_NAME }}-${{ matrix.targetPlatform }}.zip ./${{ env.PROJECT_NAME }}.app
+          popd
+          sudo mv build/${{ matrix.targetPlatform }}/${{ env.PROJECT_NAME }}-${{ matrix.targetPlatform }}.zip build/${{ env.PROJECT_NAME }}-${{ matrix.targetPlatform }}.zip
+          
+      - name: Compress Build
+        if: matrix.targetPlatform != 'StandaloneOSX'
+        run: |
+          pushd build/${{ matrix.targetPlatform }}
+          sudo zip -r ${{ env.PROJECT_NAME }}-${{ matrix.targetPlatform }}.zip ./*
+          popd
+          sudo mv build/${{ matrix.targetPlatform }}/${{ env.PROJECT_NAME }}-${{ matrix.targetPlatform }}.zip build/${{ env.PROJECT_NAME }}-${{ matrix.targetPlatform }}.zip
+
+      # Upload Artifacts
       - name: Upload Artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: Build
-          path: build
-      
-      #Upload to Pages
+          name: ${{ env.PROJECT_NAME }}-${{ matrix.targetPlatform }}
+          path: build/${{ env.PROJECT_NAME }}-${{ matrix.targetPlatform }}.zip
+
+      #Upload to Pages (For WebGL builds)
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@4.1.1
+        if: matrix.targetPlatform == 'WebGL'
         with:
           branch: gh-pages # The branch the action should deploy to.
-          folder: build/WebGL/WebGL # The folder the action should deploy.
+          folder: build/WebGL/${{ env.PROJECT_NAME }} # The folder the action should deploy.
+
+      # More details on usage here: https://github.com/marketplace/actions/create-release
+      - name: Create Release
+        id: create_release
+        uses: ncipollo/release-action@v1
+        with:
+          prerelease: true
+          allowUpdates: true
+          tag: "0.0.1" # Or what ever tag you want, but there must be a tag!
+          body: "Pre-release"
+          artifacts: 'build/${{ env.PROJECT_NAME }}-${{ matrix.targetPlatform }}.zip'
+          token: ${{ secrets.GITHUB_TOKEN }}
 
